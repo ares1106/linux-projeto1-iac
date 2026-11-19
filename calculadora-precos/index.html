@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f7a4d">
+  <title>Calculadora de Preços</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topo">
+  <h1>Calculadora de Preços</h1>
+  <span class="sub" id="resumoTopo"></span>
+</header>
+
+<nav class="abas" role="tablist">
+  <button class="aba ativa" data-aba="calcular">Calcular</button>
+  <button class="aba" data-aba="nota">Nota fiscal</button>
+  <button class="aba" data-aba="produtos">Produtos</button>
+  <button class="aba" data-aba="historico">Histórico</button>
+  <button class="aba" data-aba="ajustes">Ajustes</button>
+</nav>
+
+<main>
+  <!-- ===================== CALCULAR ===================== -->
+  <section id="calcular" class="painel ativo">
+    <div class="cartao">
+      <label>Produto
+        <input id="cNome" type="text" placeholder="Ex.: Arroz 5kg" autocomplete="off" list="listaProdutos">
+      </label>
+      <datalist id="listaProdutos"></datalist>
+      <div class="linha2">
+        <label>Custo (R$)
+          <input id="cCusto" type="text" inputmode="decimal" placeholder="0,00">
+        </label>
+        <label>Ramo / categoria
+          <select id="cCategoria"></select>
+        </label>
+      </div>
+      <label>Lucro (%)
+        <div class="porcentagem">
+          <button type="button" class="btn-mini" data-delta="-5">−5</button>
+          <button type="button" class="btn-mini" data-delta="-1">−1</button>
+          <input id="cMargem" type="text" inputmode="decimal" value="30">
+          <button type="button" class="btn-mini" data-delta="1">+1</button>
+          <button type="button" class="btn-mini" data-delta="5">+5</button>
+        </div>
+      </label>
+
+      <div class="resultado">
+        <div>
+          <span class="rotulo">Preço de venda</span>
+          <strong id="cPreco">R$ 0,00</strong>
+        </div>
+        <div class="detalhe" id="cDetalhe">Lucro por unidade: R$ 0,00</div>
+      </div>
+
+      <div id="cManualBox" class="manual-box oculto">
+        <label>Preço manual (R$)
+          <input id="cManual" type="text" inputmode="decimal" placeholder="0,00">
+        </label>
+        <div class="comparacao" id="cComparacao"></div>
+      </div>
+
+      <div class="botoes">
+        <button id="btnManual" class="btn secundario">Ajustar preço manualmente</button>
+        <button id="btnSalvar" class="btn primario">Salvar produto</button>
+      </div>
+      <button id="btnLimpar" class="btn link">Limpar</button>
+    </div>
+  </section>
+
+  <!-- ===================== NOTA FISCAL ===================== -->
+  <section id="nota" class="painel">
+    <div class="cartao">
+      <h2>Ler nota fiscal</h2>
+      <p class="ajuda">Tire uma foto da nota (ou escolha uma imagem, PDF ou o arquivo XML da NF-e). Os itens aparecem numa tabela para conferir antes de salvar.</p>
+
+      <div class="metodo">
+        <label class="opcao"><input type="radio" name="metodo" value="local" checked>
+          <span><b>Leitura no aparelho</b> — grátis, funciona melhor com foto reta e bem iluminada</span></label>
+        <label class="opcao"><input type="radio" name="metodo" value="claude">
+          <span><b>Leitura inteligente (Claude)</b> — bem mais precisa, precisa de chave de API (Ajustes)</span></label>
+      </div>
+
+      <div class="botoes">
+        <label class="btn primario arquivo">📷 Tirar foto
+          <input id="nFoto" type="file" accept="image/*" capture="environment" hidden>
+        </label>
+        <label class="btn secundario arquivo">📁 Escolher arquivo
+          <input id="nArquivo" type="file" accept="image/*,application/pdf,.xml,text/xml" hidden>
+        </label>
+      </div>
+
+      <div id="nStatus" class="status oculto"></div>
+      <img id="nPrevia" class="previa oculto" alt="Prévia da nota">
+    </div>
+
+    <div id="nResultado" class="cartao oculto">
+      <div class="cab-tabela">
+        <h2>Itens encontrados</h2>
+        <div class="aplicar-todos">
+          <select id="nCategoriaTodos"></select>
+          <button id="nAplicarCat" class="btn-mini">Aplicar a todos</button>
+        </div>
+      </div>
+      <p class="ajuda">Confira descrição e custo. "Un/emb" divide o custo quando o item vem em caixa/fardo (ex.: CX com 12 → custo por unidade).</p>
+      <div class="tabela-rolagem">
+        <table class="tabela" id="nTabela">
+          <thead><tr>
+            <th></th><th>Produto</th><th>Custo emb.</th><th>Un/emb</th><th>Custo un.</th><th>Ramo</th><th>%</th><th>Venda</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="botoes">
+        <button id="nAdicionarLinha" class="btn secundario">+ Adicionar linha</button>
+        <button id="nSalvarTodos" class="btn primario">Salvar selecionados</button>
+      </div>
+      <details class="texto-lido">
+        <summary>Ver texto lido da imagem</summary>
+        <pre id="nTexto"></pre>
+      </details>
+    </div>
+  </section>
+
+  <!-- ===================== PRODUTOS ===================== -->
+  <section id="produtos" class="painel">
+    <div class="cartao">
+      <div class="cab-tabela">
+        <h2>Produtos salvos</h2>
+        <input id="pBusca" type="search" placeholder="Buscar…">
+      </div>
+      <div id="pLista" class="lista"></div>
+    </div>
+  </section>
+
+  <!-- ===================== HISTÓRICO ===================== -->
+  <section id="historico" class="painel">
+    <div class="cartao">
+      <h2>Comparação por ramo</h2>
+      <p class="ajuda">Média dos ajustes manuais: mostra quanto, na prática, ela está colocando de lucro em cada ramo.</p>
+      <div id="hResumo" class="resumo-grid"></div>
+    </div>
+    <div class="cartao">
+      <div class="cab-tabela">
+        <h2>Ajustes manuais</h2>
+        <div>
+          <input id="hBusca" type="search" placeholder="Buscar…">
+          <button id="hExportar" class="btn-mini">Exportar CSV</button>
+        </div>
+      </div>
+      <div id="hLista" class="lista"></div>
+    </div>
+  </section>
+
+  <!-- ===================== AJUSTES ===================== -->
+  <section id="ajustes" class="painel">
+    <div class="cartao">
+      <h2>Lucro padrão</h2>
+      <div class="linha2">
+        <label>Lucro padrão (%)
+          <input id="aMargem" type="text" inputmode="decimal">
+        </label>
+        <label>Arredondar preço
+          <select id="aArredondar">
+            <option value="nenhum">Não arredondar</option>
+            <option value="10">Para cima, de 10 em 10 centavos</option>
+            <option value="50">Para cima, de 50 em 50 centavos</option>
+            <option value="99">Terminar em ,99</option>
+            <option value="90">Terminar em ,90</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="cartao">
+      <h2>Ramos de produto</h2>
+      <p class="ajuda">Cada ramo tem sua própria % de lucro. Ao escolher o ramo, a % é preenchida sozinha.</p>
+      <div id="aCategorias" class="lista"></div>
+      <div class="linha-add">
+        <input id="aNovaCat" type="text" placeholder="Novo ramo (ex.: Hortifruti)">
+        <input id="aNovaCatMargem" type="text" inputmode="decimal" placeholder="%">
+        <button id="aAddCat" class="btn primario">Adicionar</button>
+      </div>
+    </div>
+
+    <div class="cartao">
+      <h2>Leitura inteligente (Claude)</h2>
+      <p class="ajuda">Opcional. Crie uma chave em <b>console.anthropic.com</b> e cole aqui. Ela fica salva só neste aparelho. Cada nota lida custa alguns centavos.</p>
+      <label>Chave de API
+        <input id="aApiKey" type="password" placeholder="sk-ant-…" autocomplete="off">
+      </label>
+    </div>
+
+    <div class="cartao">
+      <h2>Backup</h2>
+      <p class="ajuda">Os dados ficam salvos neste aparelho/navegador. Faça backup de vez em quando ou para passar para outro aparelho.</p>
+      <div class="botoes">
+        <button id="aExportar" class="btn secundario">Baixar backup</button>
+        <label class="btn secundario arquivo">Restaurar backup
+          <input id="aImportar" type="file" accept=".json,application/json" hidden>
+        </label>
+      </div>
+      <button id="aApagar" class="btn link perigo">Apagar todos os dados</button>
+    </div>
+  </section>
+</main>
+
+<!-- Modal de ajuste manual (usado em Produtos e na Nota) -->
+<dialog id="modalManual">
+  <form method="dialog" class="modal">
+    <h2 id="mTitulo">Ajuste manual</h2>
+    <div class="info" id="mInfo"></div>
+    <label>Novo preço (R$)
+      <input id="mPreco" type="text" inputmode="decimal">
+    </label>
+    <div class="comparacao" id="mComparacao"></div>
+    <div class="botoes">
+      <button value="cancelar" class="btn secundario">Cancelar</button>
+      <button value="ok" id="mOk" class="btn primario">Salvar ajuste</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="aviso" class="aviso"></div>
+
+<script src="app.js"></script>
+<script type="module" src="nota.js"></script>
+</body>
+</html>

@@ -8,7 +8,7 @@
 
   // ---------------------------------------------------------------- dados
   const padrao = () => ({
-    config: { margemPadrao: 30, arredondar: 'nenhum', apiKey: '' },
+    config: { margemPadrao: 30, arredondar: '5', arredondarV2: true, apiKey: '' },
     categorias: [{ id: 'geral', nome: 'Geral', margem: 30 }],
     produtos: [],
     historico: [],
@@ -21,6 +21,12 @@
       if (!bruto) return padrao();
       const d = JSON.parse(bruto);
       const p = padrao();
+      // versões antigas vinham sem arredondamento: passa a usar centavos terminados em 0 ou 5
+      if (d.config && !d.config.arredondarV2) {
+        if (!d.config.arredondar || d.config.arredondar === 'nenhum') d.config.arredondar = '5';
+        d.config.arredondarV2 = true;
+        (d.produtos || []).forEach(x => { x._recalcular = true; });
+      }
       return {
         config: { ...p.config, ...(d.config || {}) },
         categorias: d.categorias && d.categorias.length ? d.categorias : p.categorias,
@@ -64,6 +70,7 @@
     if (!isFinite(preco) || preco <= 0) return preco;
     const c = Math.round(preco * 100); // centavos
     switch (db.config.arredondar) {
+      case '5': return Math.ceil(c / 5) * 5 / 100; // 4,56 → 4,60 · 8,37 → 8,40 · 9,92 → 9,95
       case '10': return Math.ceil(c / 10) * 10 / 100;
       case '50': return Math.ceil(c / 50) * 50 / 100;
       case '99': return (Math.ceil((c - 99) / 100) * 100 + 99) / 100;
@@ -76,6 +83,39 @@
     if (!isFinite(custo) || custo <= 0 || !isFinite(margem)) return NaN;
     return arredondar(custo * (1 + margem / 100));
   }
+  /** Exato, sem arredondamento (para mostrar quanto o arredondamento somou) */
+  const precoExato = (custo, margem) => Math.round(custo * (1 + margem / 100) * 100) / 100;
+  /** Recalcula o preço de todos os produtos que não foram ajustados à mão */
+  function recalcularProdutos() {
+    db.produtos.forEach(p => {
+      delete p._recalcular;
+      p.precoCalculado = calcularPreco(p.custo, p.margem);
+      if (!p.manual) p.precoFinal = p.precoCalculado;
+    });
+  }
+  const DESCR_ARRED = { nenhum: 'sem arredondar', '5': 'centavos 0 ou 5', '10': 'de 10 em 10 centavos', '50': 'de 50 em 50 centavos', '99': 'final ,99', '90': 'final ,90' };
+  function atualizarBotoesArred() {
+    const ligado = db.config.arredondar !== 'nenhum';
+    document.querySelectorAll('.btn-arred').forEach(b => {
+      b.classList.toggle('ligado', ligado);
+      b.textContent = ligado ? `✓ Arredondando: ${DESCR_ARRED[db.config.arredondar] || ''}` : 'Arredondar centavos (0 ou 5)';
+    });
+  }
+  function mudarArredondamento(regra) {
+    db.config.arredondar = regra;
+    recalcularProdutos();
+    salvar();
+    atualizarBotoesArred();
+    if ($('#aArredondar')) $('#aArredondar').value = regra;
+    document.dispatchEvent(new CustomEvent('arredondamento'));
+    aviso(regra === 'nenhum' ? 'Preços sem arredondar' : 'Preços arredondados: ' + DESCR_ARRED[regra]);
+  }
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.btn-arred')) return;
+    mudarArredondamento(db.config.arredondar === 'nenhum' ? '5' : 'nenhum');
+    recalcular();
+  });
+
   const margemReal = (custo, preco) => (custo > 0 ? (preco / custo - 1) * 100 : NaN);
 
   function categoria(id) { return db.categorias.find(c => c.id === id) || db.categorias[0]; }
@@ -298,6 +338,7 @@
     const preco = calcularPreco(custo, margem);
     $('#cPreco').textContent = brl(isFinite(preco) ? preco : 0);
     let det = isFinite(preco) ? `Lucro por unidade: ${brl(preco - custo)}` : 'Digite o custo do produto';
+    if (isFinite(preco) && Math.abs(preco - precoExato(custo, margem)) >= 0.005) det = `Exato: ${brl(precoExato(custo, margem))} → arredondado · ` + det;
     const ult = cNome.value.trim() && ultimoAjuste(cNome.value);
     if (ult) det += ` · Último ajuste manual: ${brl(ult.precoManual)} em ${data(ult.data)} (lucro real ${pct(ult.margemReal)})`;
     $('#cDetalhe').textContent = det;
@@ -575,7 +616,7 @@
       db.config.margemPadrao = v; salvar(); renderAjustes(); aviso('Lucro padrão: ' + pct(v));
     }
   });
-  $('#aArredondar').addEventListener('change', e => { db.config.arredondar = e.target.value; salvar(); aviso('Arredondamento salvo'); });
+  $('#aArredondar').addEventListener('change', e => mudarArredondamento(e.target.value));
   $('#aApiKey').addEventListener('change', e => { db.config.apiKey = e.target.value.trim(); salvar(); aviso('Chave salva neste aparelho'); });
   $('#aCategorias').addEventListener('change', e => {
     const linha = e.target.closest('.cat-linha'); const c = db.categorias.find(x => x.id === linha.dataset.id);
@@ -702,6 +743,8 @@
   };
 
   // ---------------------------------------------------------------- início
+  if (db.produtos.some(p => p._recalcular)) { recalcularProdutos(); salvar(); }
+  atualizarBotoesArred();
   cMargem.value = fmtNum(margemDaCategoria(db.categorias[0].id), 0);
   atualizarTopo();
   let abaInicial = 'calcular';

@@ -10,6 +10,7 @@ const ANTHROPIC_SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.4.0/
 
 let itens = []; // linhas da tabela
 let ultimosSalvos = [];
+document.addEventListener('arredondamento', () => { if (itens.length) renderTabela(); });
 document.getElementById('nWhats').addEventListener('click', () => App.abrirListaWhats(ultimosSalvos));
 
 // ------------------------------------------------------------------ status

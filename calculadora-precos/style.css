@@ -205,3 +205,7 @@ select.filtro { display: inline-block; width: auto; margin: 0; padding: 8px; fon
 textarea { width: 100%; font: inherit; font-size: .95rem; padding: 10px; border: 1px solid var(--borda); border-radius: 8px; background: var(--fundo); color: var(--texto); resize: vertical; }
 label.check { display: flex; gap: 8px; align-items: center; color: var(--texto); font-size: .95rem; }
 #modalLista { width: min(560px, calc(100% - 24px)); }
+
+.btn-arred { margin-top: 8px; }
+.btn-arred.ligado { background: var(--verde); color: #fff; border-color: var(--verde); }
+@media (prefers-color-scheme: dark) { .btn-arred.ligado { color: #0c1a12; } }

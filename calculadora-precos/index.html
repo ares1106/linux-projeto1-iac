@@ -56,6 +56,7 @@
           <strong id="cPreco">R$ 0,00</strong>
         </div>
         <div class="detalhe" id="cDetalhe">Lucro por unidade: R$ 0,00</div>
+        <button type="button" class="btn-mini btn-arred"></button>
       </div>
 
       <div id="cSugestao"></div>
@@ -113,6 +114,7 @@
           <select id="nCategoriaTodos"></select>
           <button id="nAplicarCat" class="btn-mini">Aplicar a todos</button>
         </div>
+        <button type="button" class="btn-mini btn-arred" style="width:100%"></button>
       </div>
       <div id="nResumoVar" class="resumo-var"></div>
       <p class="ajuda">Confira descrição e custo. "Un/emb" divide o custo quando o item vem em caixa/fardo (ex.: CX com 12 → custo por unidade).</p>
@@ -194,6 +196,7 @@
         <label>Arredondar preço
           <select id="aArredondar">
             <option value="nenhum">Não arredondar</option>
+            <option value="5">Centavos terminados em 0 ou 5 (4,55 · 6,60 · 9,95)</option>
             <option value="10">Para cima, de 10 em 10 centavos</option>
             <option value="50">Para cima, de 50 em 50 centavos</option>
             <option value="99">Terminar em ,99</option>

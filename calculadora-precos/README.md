@@ -6,6 +6,9 @@ colocando a % de lucro em cima do custo.
 ## O que faz
 
 - **Calcular**: custo + % de lucro → preço de venda. Lucro inicial de **30%**, com botões −5/−1/+1/+5.
+- **Arredondamento**: por padrão os preços terminam em 0 ou 5 centavos, sempre para cima
+  (4,56 → 4,60 · 8,37 → 8,40 · 9,92 → 9,95). Botão liga/desliga em Calcular e na nota; outras regras em Ajustes.
+  Ao mudar a regra, os preços salvos (que não foram ajustados à mão) são recalculados.
 - **Ramos de produto** (Ajustes): cada ramo tem a sua % (ex.: Bebidas 25%, Hortifruti 45%). Ao escolher o ramo a % é preenchida.
 - **Ajustar preço manualmente**: mostra na hora o preço calculado, o manual, a diferença em R$ e % e o lucro real.
   Ao salvar, o ajuste fica registrado no **Histórico**.

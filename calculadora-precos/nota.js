@@ -9,6 +9,8 @@ const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tess
 const ANTHROPIC_SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.4.0/+esm';
 
 let itens = []; // linhas da tabela
+let ultimosSalvos = [];
+document.getElementById('nWhats').addEventListener('click', () => App.abrirListaWhats(ultimosSalvos));
 
 // ------------------------------------------------------------------ status
 function status(msg, erro = false) {
@@ -201,6 +203,7 @@ function montarItens(lidos) {
       marcado: l.confiavel !== false,
       custoEmb: Math.round(l.valorUnitario * 100) / 100,
       unPorEmb: l.unPorEmb || 1,
+      unidade: (l.unidade || '').toUpperCase(),
       categoriaId,
       margem: existente ? existente.margem : App.margemDaCategoria(categoriaId),
       precoManual: null
@@ -320,8 +323,11 @@ $('#nSalvarTodos').addEventListener('click', () => {
   const sel = itens.filter(it => it.marcado && custoUn(it) > 0);
   if (!sel.length) { App.aviso('Nenhum item marcado com custo válido'); return; }
   let ajustes = 0, aumentos = 0;
+  const ids = [];
   sel.forEach(it => {
-    const prod = App.salvarProduto({ nome: it.nome, produtoId: it.vinculo || null, ean: it.ean, custo: Math.round(custoUn(it) * 10000) / 10000, categoriaId: it.categoriaId, margem: it.margem });
+    const porKg = /^KG/.test(it.unidade || '') && !(it.unPorEmb > 1);
+    const prod = App.salvarProduto({ nome: it.nome, produtoId: it.vinculo || null, ean: it.ean, porKg, custo: Math.round(custoUn(it) * 10000) / 10000, categoriaId: it.categoriaId, margem: it.margem });
+    ids.push(prod.id);
     if (prod.variacaoAgora && prod.variacaoAgora.diferenca > 0) aumentos++;
     if (it.precoManual != null) { App.registrarAjuste(prod, it.precoManual); ajustes++; }
   });
@@ -330,4 +336,7 @@ $('#nSalvarTodos').addEventListener('click', () => {
   renderTabela();
   if (!itens.length) $('#nResultado').classList.add('oculto');
   App.aviso(`${sel.length} produto(s) salvos${ajustes ? `, ${ajustes} com ajuste manual` : ''}${aumentos ? ` · ${aumentos} aumento(s) de custo no Histórico` : ''}`);
+  ultimosSalvos = ids;
+  $('#nWhatsBox').classList.remove('oculto');
+  $('#nWhatsMsg').textContent = `${sel.length} produto(s) salvos.`;
 });

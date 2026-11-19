@@ -131,5 +131,50 @@
     return (10 - (soma % 10)) % 10 === dv;
   }
 
-  global.Reconhecer = { chave, similaridade, gtinValido, extrairMedida };
+  // Acentos de palavras comuns (as notas costumam vir sem acento)
+  const ACENTOS = {
+    JOAO: 'João', FEIJAO: 'Feijão', ACUCAR: 'Açúcar', CAFE: 'Café', OLEO: 'Óleo', SABAO: 'Sabão',
+    MACARRAO: 'Macarrão', PAO: 'Pão', LIMAO: 'Limão', MAMAO: 'Mamão', REQUEIJAO: 'Requeijão', PILAO: 'Pilão',
+    HIGIENICO: 'Higiênico', AGUA: 'Água', CHA: 'Chá', LINGUICA: 'Linguiça', FECULA: 'Fécula', ALCOOL: 'Álcool',
+    PESSEGO: 'Pêssego', MACA: 'Maçã', ACAI: 'Açaí', MELAO: 'Melão', CAMARAO: 'Camarão', SALMAO: 'Salmão',
+    PURE: 'Purê', PE: 'Pé', LAMPADA: 'Lâmpada', ESPONJA: 'Esponja', SABAOEMPO: 'Sabão em pó', PO: 'Pó',
+    GRAOS: 'Grãos', GRAO: 'Grão', FILE: 'Filé', CONTRAFILE: 'Contrafilé', COXAO: 'Coxão', LAGARTO: 'Lagarto',
+    MUCARELA: 'Muçarela', MUSSARELA: 'Muçarela', PRATO: 'Prato', TEMPERO: 'Tempero', ENERGETICO: 'Energético',
+    NECTAR: 'Néctar', GELEIA: 'Geleia', ACHOCOLATADO: 'Achocolatado', SAO: 'São', SALGADINHO: 'Salgadinho',
+    AMENDOIM: 'Amendoim', PAPEL: 'Papel', TOALHA: 'Toalha', MAIONESE: 'Maionese', VINAGRE: 'Vinagre',
+    ORGANICO: 'Orgânico', ACUCARADO: 'Açucarado', FRANCES: 'Francês', LEITE: 'Leite', CONDENSADO: 'Condensado',
+    TRADICIONAL: 'Tradicional', LIQUIDO: 'Líquido', CONCENTRADO: 'Concentrado', GRATIS: 'Grátis', LIMPEZA: 'Limpeza', UNIAO: 'União', YPE: 'Ypê', MOCA: 'Moça', PAES: 'Pães', LIMOES: 'Limões', FEIJOES: 'Feijões', COCO: 'Coco'
+  };
+  const MINUSC = new Set(['DE', 'DA', 'DO', 'DAS', 'DOS', 'E', 'COM', 'SEM', 'EM', 'PARA']);
+
+  /** "ARROZ TIO JOAO T1 5KG" → "Arroz Tio João Tipo 1 5kg". Nomes já digitados normalmente não mudam. */
+  function nomeAmigavel(nome) {
+    nome = String(nome || '').trim().replace(/\s+/g, ' ');
+    const letras = nome.replace(/[^A-Za-zÀ-ÿ]/g, '');
+    if (!letras || letras !== letras.toUpperCase()) return nome; // já tem minúsculas: foi escrito à mão
+    const sa = semAcento(nome);
+    const out = [];
+    sa.split(' ').forEach((t, i) => {
+      // medidas: 5KG → 5kg, 2000ML → 2L, 500GR → 500g
+      const m = t.match(/^(\d+(?:[.,]\d+)?)(KG|KGS|K|GRS|GR|G|LTS|LT|L|ML)$/);
+      if (m) {
+        let v = m[1], u = m[2];
+        if (u === 'ML' && parseFloat(v) >= 1000) { v = String(parseFloat(v) / 1000).replace('.', ','); u = 'L'; }
+        u = /^K/.test(u) ? 'kg' : /^G/.test(u) ? 'g' : u === 'ML' ? 'ml' : 'L';
+        out.push(v + u); return;
+      }
+      if (/^\d+X\d/.test(t)) { out.push(t.replace('X', 'x').toLowerCase().replace(/(\d)l$/, '$1L')); return; }
+      const exp = ABREV[t] && !['PET', 'LATA', 'ZERO', 'DIET', 'LIGHT'].includes(t) ? ABREV[t] : t;
+      exp.split(' ').forEach(w => {
+        if (ACENTOS[w]) out.push(ACENTOS[w]);
+        else if (i > 0 && MINUSC.has(w)) out.push(w.toLowerCase());
+        else if (/^(KG|G|GR|ML|L|LT|UN)$/.test(w)) out.push(w === 'L' || w === 'LT' ? 'L' : w.toLowerCase());
+        else if (/\d/.test(w) || w.length <= 2 && !/^[AEIOU]$/.test(w)) out.push(w); // códigos/siglas
+        else out.push(w.toLowerCase().replace(/(^|-)([a-z])/g, (x, h, c) => h + c.toUpperCase()));
+      });
+    });
+    return out.join(' ').replace(/\bC\//g, 'c/');
+  }
+
+  global.Reconhecer = { chave, similaridade, gtinValido, extrairMedida, nomeAmigavel };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -113,7 +113,7 @@
    * Salva/atualiza um produto. Se produtoId vier (produto reconhecido), atualiza esse produto
    * e guarda o nome da nota como "apelido" para reconhecer direto na próxima vez.
    */
-  function salvarProduto({ nome, custo, categoriaId, margem, precoFinal, manual, produtoId, ean }) {
+  function salvarProduto({ nome, custo, categoriaId, margem, precoFinal, manual, produtoId, ean, porKg }) {
     nome = (nome || '').trim();
     if (!nome) nome = 'Produto sem nome';
     const chave = normalizar(nome);
@@ -123,7 +123,8 @@
     const agora = new Date().toISOString();
     let variacao = null;
     if (!p) {
-      p = { id: uid(), nome, criado: agora, custos: [{ data: agora, custo }], apelidos: [] };
+      const bonito = window.Reconhecer.nomeAmigavel(nome);
+      p = { id: uid(), nome: bonito, criado: agora, custos: [{ data: agora, custo }], apelidos: bonito !== nome ? [nome] : [] };
       db.produtos.push(p);
     } else {
       migrarProduto(p);
@@ -142,6 +143,7 @@
       }
     }
     if (ean) p.ean = ean;
+    if (porKg !== undefined) p.porKg = !!porKg;
     Object.assign(p, {
       custo, categoriaId, margem,
       precoCalculado: calculado,
@@ -412,6 +414,7 @@
         <div class="acoes">
           <button class="btn-mini" data-acao="manual">Ajustar preço</button>
           <button class="btn-mini" data-acao="editar">Editar / recalcular</button>
+          <button class="btn-mini" data-acao="renomear">Renomear</button>
           ${p.manual ? '<button class="btn-mini" data-acao="voltar">Voltar ao calculado</button>' : ''}
           <button class="btn-mini" data-acao="excluir">Excluir</button>
         </div>
@@ -429,6 +432,12 @@
       abrirAba('calcular');
       cNome.value = p.nome; cCusto.value = fmtNum(p.custo); cCat.value = p.categoriaId; cMargem.value = fmtNum(p.margem, 0);
       recalcular();
+    } else if (acao === 'renomear') {
+      const novo = prompt('Nome do produto (é assim que aparece na lista do WhatsApp):', p.nome);
+      if (novo && novo.trim() && novo.trim() !== p.nome) {
+        if (!(p.apelidos || []).some(a => normalizar(a) === normalizar(p.nome))) (p.apelidos = p.apelidos || []).push(p.nome);
+        p.nome = novo.trim(); salvar(); renderProdutos(); aviso('Nome atualizado');
+      }
     } else if (acao === 'voltar') {
       p.precoFinal = calcularPreco(p.custo, p.margem); p.manual = false; p.atualizado = new Date().toISOString();
       salvar(); renderProdutos();
@@ -614,12 +623,82 @@
   });
 
   // ---------------------------------------------------------------- API para a tela da nota
+  // ---------------------------------------------------------------- LISTA PARA WHATSAPP
+  let idsUltimaNota = [];
+  function produtosDaLista() {
+    const filtro = $('#lFiltro').value;
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const semana = Date.now() - 7 * 864e5;
+    return db.produtos.filter(p => {
+      if (filtro === 'nota') return idsUltimaNota.includes(p.id);
+      if (filtro === 'hoje') return new Date(p.atualizado) >= hoje;
+      if (filtro === 'semana') return new Date(p.atualizado).getTime() >= semana;
+      return true;
+    });
+  }
+  function nomeLista(p) { return window.Reconhecer.nomeAmigavel(p.nome); }
+  function textoLista() {
+    const lista = produtosDaLista().filter(p => p.precoFinal > 0);
+    const linha = p => `• ${nomeLista(p)} — *${brl(p.precoFinal)}${p.porKg ? '/kg' : ''}*`;
+    const ordenar = arr => arr.slice().sort((a, b) => nomeLista(a).localeCompare(nomeLista(b), 'pt-BR'));
+    let corpo;
+    if ($('#lPorRamo').checked) {
+      corpo = db.categorias.map(c => {
+        const itens = ordenar(lista.filter(p => p.categoriaId === c.id));
+        return itens.length ? `*${c.nome.toUpperCase()}*\n${itens.map(linha).join('\n')}` : '';
+      }).filter(Boolean);
+      const semRamo = ordenar(lista.filter(p => !db.categorias.some(c => c.id === p.categoriaId)));
+      if (semRamo.length) corpo.push(semRamo.map(linha).join('\n'));
+      corpo = corpo.join('\n\n');
+    } else {
+      corpo = ordenar(lista).map(linha).join('\n');
+    }
+    const titulo = $('#lTitulo').value.trim();
+    const cab = titulo ? `*${titulo}*\n${$('#lPorRamo').checked ? '\n' : ''}` : '';
+    return { texto: `${cab}${corpo}`, qtd: lista.length };
+  }
+  function atualizarLista() {
+    const { texto, qtd } = textoLista();
+    $('#lTexto').value = qtd ? texto : '';
+    $('#lQtd').textContent = qtd ? `${qtd} produto(s) — dá para editar o texto antes de enviar` : 'Nenhum produto neste filtro.';
+  }
+  function abrirListaWhats(ids) {
+    if (ids && ids.length) idsUltimaNota = ids;
+    const optNota = $('#lFiltro option[value=nota]');
+    optNota.disabled = !idsUltimaNota.length;
+    $('#lFiltro').value = ids && ids.length ? 'nota' : (idsUltimaNota.length ? 'nota' : 'hoje');
+    $('#lTitulo').value = db.config.tituloLista || `Preços ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
+    atualizarLista();
+    $('#modalLista').showModal();
+  }
+  ['#lFiltro', '#lPorRamo'].forEach(s => $(s).addEventListener('change', atualizarLista));
+  $('#lTitulo').addEventListener('input', atualizarLista);
+  $('#lTitulo').addEventListener('change', e => {
+    // guarda o título se não for o padrão com data
+    if (!/^Preços \d{2}\/\d{2}$/.test(e.target.value.trim())) { db.config.tituloLista = e.target.value.trim(); salvar(); }
+  });
+  $('#lEnviar').addEventListener('click', async () => {
+    const texto = $('#lTexto').value.trim();
+    if (!texto) { aviso('A lista está vazia'); return; }
+    if (navigator.share) {
+      try { await navigator.share({ text: texto }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
+  });
+  $('#lCopiar').addEventListener('click', async () => {
+    const t = $('#lTexto');
+    try { await navigator.clipboard.writeText(t.value); }
+    catch (e) { t.select(); document.execCommand('copy'); }
+    aviso('Lista copiada — é só colar no WhatsApp');
+  });
+  $('#pWhats').addEventListener('click', () => abrirListaWhats());
+
   window.App = {
     get db() { return db; },
     num, brl, pct, fmtNum, esc, normalizar, aviso,
     calcularPreco, margemDaCategoria, opcoesCategorias, categoria,
     salvarProduto, registrarAjuste, pedirPrecoManual, salvar,
-    compararCusto, produtoPorNome, textoVariacao, encontrarParecidos, RECONHECER_AUTO
+    compararCusto, produtoPorNome, textoVariacao, encontrarParecidos, RECONHECER_AUTO, abrirListaWhats
   };
 
   // ---------------------------------------------------------------- início

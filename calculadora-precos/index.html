@@ -99,6 +99,10 @@
       </div>
 
       <div id="nStatus" class="status oculto"></div>
+      <div id="nWhatsBox" class="variacao desce oculto" style="margin-top:12px">
+        <span id="nWhatsMsg"></span>
+        <button id="nWhats" class="btn primario whats" style="width:100%;margin-top:8px">💬 Montar lista para WhatsApp</button>
+      </div>
       <img id="nPrevia" class="previa oculto" alt="Prévia da nota">
     </div>
 
@@ -138,6 +142,7 @@
         <h2>Produtos salvos</h2>
         <input id="pBusca" type="search" placeholder="Buscar…">
       </div>
+      <button id="pWhats" class="btn primario whats" style="width:100%;margin-bottom:12px">💬 Lista de preços para WhatsApp</button>
       <div id="pLista" class="lista"></div>
     </div>
   </section>
@@ -230,6 +235,34 @@
     </div>
   </section>
 </main>
+
+<!-- Lista de preços para WhatsApp -->
+<dialog id="modalLista">
+  <div class="modal">
+    <h2>Lista de preços para WhatsApp</h2>
+    <div class="linha2">
+      <label>Quais produtos
+        <select id="lFiltro">
+          <option value="nota">Da última nota salva</option>
+          <option value="hoje">Atualizados hoje</option>
+          <option value="semana">Atualizados nos últimos 7 dias</option>
+          <option value="todos">Todos os produtos</option>
+        </select>
+      </label>
+      <label>Título
+        <input id="lTitulo" type="text">
+      </label>
+    </div>
+    <label class="check"><input id="lPorRamo" type="checkbox" checked> Separar por ramo</label>
+    <div class="ajuda" id="lQtd"></div>
+    <textarea id="lTexto" rows="12"></textarea>
+    <div class="botoes">
+      <button id="lEnviar" class="btn primario whats">Enviar no WhatsApp</button>
+      <button id="lCopiar" class="btn secundario">Copiar</button>
+    </div>
+    <form method="dialog"><button class="btn link" style="width:100%">Fechar</button></form>
+  </div>
+</dialog>
 
 <!-- Modal de ajuste manual (usado em Produtos e na Nota) -->
 <dialog id="modalManual">

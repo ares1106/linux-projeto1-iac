@@ -21,6 +21,11 @@ colocando a % de lucro em cima do custo.
   marca e palavras do nome (entende abreviações e erros de leitura; marca diferente = outro produto).
   Na nota, a coluna "Produto salvo" já vem escolhida quando a semelhança é alta (≥ 80%); abaixo disso ela
   escolhe na lista ou deixa como produto novo. O nome da nota vira apelido do produto e na próxima compra é reconhecido direto.
+- **Lista para WhatsApp**: depois de salvar a nota aparece o botão "Montar lista para WhatsApp"
+  (também na aba Produtos). Gera "• Nome do produto — *R$ 0,00*", separado por ramo, com título;
+  filtros: última nota, atualizados hoje, últimos 7 dias ou todos. O texto pode ser editado antes de enviar.
+  Os nomes da nota são convertidos para nomes fáceis ("ARROZ TIO JOAO T1 5KG" → "Arroz Tio João Tipo 1 5kg");
+  o botão "Renomear" na aba Produtos corrige qualquer nome de vez. Produtos vendidos por kg aparecem com "/kg".
 - **Nota fiscal**: tire foto da nota (ou escolha imagem, PDF ou o XML da NF-e) e os itens aparecem numa tabela
   para conferir e salvar todos de uma vez. A coluna "Un/emb" divide o custo de caixas/fardos por unidade.
   - *XML da NF-e*: valores exatos (recomendado quando o fornecedor envia o XML por e-mail).

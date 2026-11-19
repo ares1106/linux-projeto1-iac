@@ -107,9 +107,10 @@ const ESQUEMA_ITENS = {
           unidade: { type: 'string', description: 'UN, CX, FD, KG, PCT...' },
           valor_unitario: { type: 'number', description: 'Valor unitário em reais, como na nota' },
           valor_total: { type: 'number', description: 'Valor total do item em reais' },
+          codigo_barras: { type: 'string', description: 'Código de barras (EAN/GTIN) do item se estiver impresso na nota; vazio se não houver' },
           unidades_por_embalagem: { type: 'number', description: 'Quantas unidades vêm dentro de cada caixa/fardo/pacote, se a descrição indicar (ex.: CX12, 12X1L, FD 6UN). 1 se não houver.' }
         },
-        required: ['descricao', 'quantidade', 'unidade', 'valor_unitario', 'valor_total', 'unidades_por_embalagem'],
+        required: ['descricao', 'quantidade', 'unidade', 'valor_unitario', 'valor_total', 'codigo_barras', 'unidades_por_embalagem'],
         additionalProperties: false
       }
     }
@@ -179,6 +180,7 @@ async function lerComClaude(arquivo, ehPdf) {
     unidade: i.unidade,
     valorUnitario: i.valor_unitario || (i.quantidade ? i.valor_total / i.quantidade : 0),
     unPorEmb: i.unidades_por_embalagem > 0 ? i.unidades_por_embalagem : 1,
+    ean: /^\d{8,14}$/.test(i.codigo_barras || '') && window.Reconhecer.gtinValido(i.codigo_barras) ? i.codigo_barras : '',
     confiavel: true
   }));
 }
@@ -189,12 +191,14 @@ function categoriaPadrao() { return App.db.categorias[0].id; }
 function montarItens(lidos) {
   const cat = $('#nCategoriaTodos').value || categoriaPadrao();
   itens = lidos.map(l => {
-    // Se já existe produto com o mesmo nome, reaproveita ramo e %
-    const existente = App.db.produtos.find(p => App.normalizar(p.nome) === App.normalizar(l.descricao));
+    const it = { nome: l.descricao, ean: l.ean || '' };
+    reconhecer(it);
+    // Se reconheceu o produto, reaproveita ramo e %
+    const existente = vinculado(it);
     const categoriaId = existente ? existente.categoriaId : cat;
     return {
+      ...it,
       marcado: l.confiavel !== false,
-      nome: l.descricao,
       custoEmb: Math.round(l.valorUnitario * 100) / 100,
       unPorEmb: l.unPorEmb || 1,
       categoriaId,
@@ -205,22 +209,39 @@ function montarItens(lidos) {
   renderTabela();
 }
 
+/** Procura produtos já salvos parecidos com o item da nota */
+function reconhecer(it) {
+  it.candidatos = App.encontrarParecidos(it.nome, it.ean);
+  const melhor = it.candidatos[0];
+  it.vinculo = melhor && melhor.score >= App.RECONHECER_AUTO ? melhor.prod.id : '';
+}
+const vinculado = it => (it.vinculo ? App.db.produtos.find(p => p.id === it.vinculo) : null);
+
 const custoUn = it => (it.unPorEmb > 0 ? it.custoEmb / it.unPorEmb : it.custoEmb);
 
 function celulaVariacao(it) {
-  const prod = App.produtoPorNome(it.nome);
-  if (!prod) return '<td class="var novo">produto novo</td>';
-  const v = App.compararCusto(prod, custoUn(it));
-  if (!v) return `<td class="var igual">= mesmo custo<br>${brl(prod.custo)}</td>`;
-  const sobe = v.diferenca > 0;
-  return `<td class="var ${sobe ? 'sobe' : 'desce'}" title="Antes: ${brl(v.custoAnterior)}">${sobe ? '▲' : '▼'} ${App.pct(Math.abs(v.diferencaPct))} (${sobe ? '+' : '−'}${brl(Math.abs(v.diferenca))})<br>antes ${brl(v.custoAnterior)}</td>`;
+  const prod = vinculado(it);
+  const opcoes = ['<option value="">➕ produto novo</option>'].concat((it.candidatos || []).map(c =>
+    `<option value="${esc(c.prod.id)}"${c.prod.id === it.vinculo ? ' selected' : ''}>${esc(c.prod.nome)} (${Math.round(c.score * 100)}%)</option>`));
+  const sel = `<select data-c="vinculo" class="vinculo">${opcoes.join('')}</select>`;
+  let info;
+  if (!prod) info = `<div class="var novo">${it.candidatos && it.candidatos.length ? 'parecidos na lista ↑ — escolha se for o mesmo' : 'não encontrado nos salvos'}</div>`;
+  else {
+    const v = App.compararCusto(prod, custoUn(it));
+    if (!v) info = `<div class="var igual">= mesmo custo (${brl(prod.custo)})</div>`;
+    else {
+      const sobe = v.diferenca > 0;
+      info = `<div class="var ${sobe ? 'sobe' : 'desce'}">${sobe ? '▲' : '▼'} ${App.pct(Math.abs(v.diferencaPct))} (${sobe ? '+' : '−'}${brl(Math.abs(v.diferenca))}) · antes ${brl(v.custoAnterior)}</div>`;
+    }
+  }
+  return `<td class="cel-vinculo">${sel}${info}</td>`;
 }
 
 function resumoVariacoes() {
   let sobe = 0, desce = 0, novos = 0, maior = null;
   itens.forEach(it => {
     if (!it.marcado) return;
-    const prod = App.produtoPorNome(it.nome);
+    const prod = vinculado(it);
     if (!prod) { novos++; return; }
     const v = App.compararCusto(prod, custoUn(it));
     if (!v) return;
@@ -261,7 +282,12 @@ $('#nTabela').addEventListener('change', e => {
   const tr = e.target.closest('tr[data-i]'); if (!tr) return;
   const it = itens[tr.dataset.i]; const c = e.target.dataset.c;
   if (c === 'marcado') it.marcado = e.target.checked;
-  else if (c === 'nome') it.nome = e.target.value;
+  else if (c === 'nome') { it.nome = e.target.value; reconhecer(it); }
+  else if (c === 'vinculo') {
+    it.vinculo = e.target.value;
+    const p = vinculado(it);
+    if (p) { it.categoriaId = p.categoriaId; it.margem = p.margem; it.precoManual = null; }
+  }
   else if (c === 'custoEmb') { const v = num(e.target.value); if (v >= 0) it.custoEmb = v; it.precoManual = null; }
   else if (c === 'unPorEmb') { const v = num(e.target.value); if (v > 0) it.unPorEmb = v; it.precoManual = null; }
   else if (c === 'margem') { const v = num(e.target.value); if (isFinite(v)) it.margem = v; it.precoManual = null; }
@@ -285,7 +311,7 @@ $('#nAplicarCat').addEventListener('click', () => {
 
 $('#nAdicionarLinha').addEventListener('click', () => {
   const cat = $('#nCategoriaTodos').value || categoriaPadrao();
-  itens.push({ marcado: true, nome: '', custoEmb: 0, unPorEmb: 1, categoriaId: cat, margem: App.margemDaCategoria(cat), precoManual: null });
+  itens.push({ marcado: true, nome: '', ean: '', vinculo: '', candidatos: [], custoEmb: 0, unPorEmb: 1, categoriaId: cat, margem: App.margemDaCategoria(cat), precoManual: null });
   renderTabela();
   const ult = $('#nTabela tbody tr:last-child input[data-c=nome]'); if (ult) ult.focus();
 });
@@ -295,7 +321,7 @@ $('#nSalvarTodos').addEventListener('click', () => {
   if (!sel.length) { App.aviso('Nenhum item marcado com custo válido'); return; }
   let ajustes = 0, aumentos = 0;
   sel.forEach(it => {
-    const prod = App.salvarProduto({ nome: it.nome, custo: Math.round(custoUn(it) * 10000) / 10000, categoriaId: it.categoriaId, margem: it.margem });
+    const prod = App.salvarProduto({ nome: it.nome, produtoId: it.vinculo || null, ean: it.ean, custo: Math.round(custoUn(it) * 10000) / 10000, categoriaId: it.categoriaId, margem: it.margem });
     if (prod.variacaoAgora && prod.variacaoAgora.diferenca > 0) aumentos++;
     if (it.precoManual != null) { App.registrarAjuste(prod, it.precoManual); ajustes++; }
   });

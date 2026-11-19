@@ -194,3 +194,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 .custos summary { cursor: pointer; color: var(--verde); }
 .custos div { padding: 2px 0; }
 select.filtro { display: inline-block; width: auto; margin: 0; padding: 8px; font-size: .9rem; }
+
+.tabela .cel-vinculo { min-width: 220px; }
+.tabela select.vinculo { font-size: .85rem; padding: 6px; margin-bottom: 3px; }
+#cSugestao .btn-mini { margin-left: 6px; }
+.tabela { min-width: 1000px; }
+.tabela input[data-c=nome] { min-width: 210px; }

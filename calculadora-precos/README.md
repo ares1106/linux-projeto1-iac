@@ -15,6 +15,12 @@ colocando a % de lucro em cima do custo.
   subiu ou baixou, quanto em R$ e em %, o custo e a data da compra anterior e como fica o novo preço de venda.
   Cada produto guarda o histórico de custos (aba Produtos), e a aba Histórico lista todas as variações
   (filtro "só aumentos", exporta CSV). Na tabela da nota aparece a coluna "Última compra" e um resumo dos aumentos.
+- **Reconhecimento do produto**: o mesmo produto é reconhecido mesmo com nome escrito diferente
+  ("ARROZ TIO JOAO T1 5KG" = "Arroz Tio João Tipo 1 5kg"), comparando:
+  código de barras (quando a nota traz), peso/volume (5KG = 5000G; tamanho diferente = outro produto),
+  marca e palavras do nome (entende abreviações e erros de leitura; marca diferente = outro produto).
+  Na nota, a coluna "Produto salvo" já vem escolhida quando a semelhança é alta (≥ 80%); abaixo disso ela
+  escolhe na lista ou deixa como produto novo. O nome da nota vira apelido do produto e na próxima compra é reconhecido direto.
 - **Nota fiscal**: tire foto da nota (ou escolha imagem, PDF ou o XML da NF-e) e os itens aparecem numa tabela
   para conferir e salvar todos de uma vez. A coluna "Un/emb" divide o custo de caixas/fardos por unidade.
   - *XML da NF-e*: valores exatos (recomendado quando o fornecedor envia o XML por e-mail).
@@ -45,5 +51,6 @@ diferença = preço manual − preço calculado
 - `index.html`, `style.css` — telas
 - `app.js` — cálculo, produtos, histórico, ramos, backup
 - `nota.js` — leitura da nota (foto/PDF/XML) e tabela de conferência
+- `reconhecer.js` — comparação de nomes (peso/volume, marca, abreviações, código de barras)
 - `parser.js` — interpretação do texto lido e do XML da NF-e
 - `manifest.json`, `sw.js`, `icon.svg` — instalação como app

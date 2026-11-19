@@ -24,6 +24,7 @@ function tokensNumericos(linha) {
   return out;
 }
 
+const gtinOk = c => (globalThis.Reconhecer ? globalThis.Reconhecer.gtinValido(c) : true);
 const perto = (a, b) => Math.abs(a - b) <= Math.max(0.02, Math.abs(b) * 0.015);
 
 /** Procura, na ordem da linha, quantidade × unitário = total */
@@ -114,7 +115,8 @@ export function parseTextoNota(texto) {
     if (um) unidade = um.replace('.', '').toUpperCase();
 
     const unPorEmb = UNIDADES_EMB.test(unidade) ? unidadesPorEmbalagem(descricao) : 1;
-    itens.push({ descricao, quantidade, unidade, valorUnitario, unPorEmb, confiavel });
+    const ean = nums.map(n => n.txt).find(t => /^\d{12,14}$/.test(t) && gtinOk(t)) || '';
+    itens.push({ descricao, quantidade, unidade, valorUnitario, unPorEmb, confiavel, ean });
   }
   return itens;
 }
@@ -136,6 +138,7 @@ export function parseXmlNfe(xml) {
     // custo real = (valor do produto − desconto do item) ÷ quantidade
     const valorUnitario = (vProd - vDesc) / quantidade || parseFloat(pega(det, 'vUnCom')) || 0;
     const unPorEmb = UNIDADES_EMB.test(unidade) ? unidadesPorEmbalagem(descricao) : 1;
-    return { descricao, quantidade, unidade, valorUnitario, unPorEmb, confiavel: true };
+    const ean = [pega(det, 'cEAN'), pega(det, 'cEANTrib')].find(c => /^\d{8,14}$/.test(c) && gtinOk(c)) || '';
+    return { descricao, quantidade, unidade, valorUnitario, unPorEmb, confiavel: true, ean };
   });
 }

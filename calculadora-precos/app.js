@@ -109,23 +109,31 @@
   }
 
   // ---------------------------------------------------------------- produtos e histórico
-  function salvarProduto({ nome, custo, categoriaId, margem, precoFinal, manual }) {
+  /**
+   * Salva/atualiza um produto. Se produtoId vier (produto reconhecido), atualiza esse produto
+   * e guarda o nome da nota como "apelido" para reconhecer direto na próxima vez.
+   */
+  function salvarProduto({ nome, custo, categoriaId, margem, precoFinal, manual, produtoId, ean }) {
     nome = (nome || '').trim();
     if (!nome) nome = 'Produto sem nome';
     const chave = normalizar(nome);
     const calculado = calcularPreco(custo, margem);
-    let p = db.produtos.find(x => normalizar(x.nome) === chave);
+    let p = produtoId ? db.produtos.find(x => x.id === produtoId) : null;
+    if (!p) p = (ean && db.produtos.find(x => x.ean === ean)) || produtoPorNome(nome);
     const agora = new Date().toISOString();
     let variacao = null;
     if (!p) {
-      p = { id: uid(), nome, criado: agora, custos: [{ data: agora, custo }] };
+      p = { id: uid(), nome, criado: agora, custos: [{ data: agora, custo }], apelidos: [] };
       db.produtos.push(p);
     } else {
       migrarProduto(p);
+      if (normalizar(p.nome) !== chave && !(p.apelidos || []).some(a => normalizar(a) === chave)) {
+        (p.apelidos = p.apelidos || []).push(nome);
+      }
       variacao = compararCusto(p, custo);
       if (variacao) {
         variacao = {
-          ...variacao, id: uid(), data: agora, produtoId: p.id, nome,
+          ...variacao, id: uid(), data: agora, produtoId: p.id, nome: p.nome,
           precoVendaAnterior: p.precoFinal, precoVendaNovo: calculado
         };
         db.variacoes.unshift(variacao);
@@ -133,8 +141,9 @@
         p.ultimaVariacao = variacao;
       }
     }
+    if (ean) p.ean = ean;
     Object.assign(p, {
-      nome, custo, categoriaId, margem,
+      custo, categoriaId, margem,
       precoCalculado: calculado,
       precoFinal: manual ? precoFinal : calculado,
       manual: !!manual,
@@ -158,7 +167,32 @@
       diferencaPct: dif / prod.custo * 100
     };
   }
-  const produtoPorNome = nome => db.produtos.find(x => normalizar(x.nome) === normalizar(nome));
+  /** Produto com exatamente esse nome (ou apelido) */
+  function produtoPorNome(nome) {
+    const k = normalizar(nome);
+    if (!k) return null;
+    return db.produtos.find(x => normalizar(x.nome) === k || (x.apelidos || []).some(a => normalizar(a) === k)) || null;
+  }
+
+  const RECONHECER_AUTO = 0.8; // a partir daqui o produto é ligado sozinho (ela pode trocar)
+  /** Produtos parecidos por nome + peso/volume + marca (ou código de barras). [{prod, score}] */
+  function encontrarParecidos(nome, ean, limite = 3) {
+    const R = window.Reconhecer;
+    const k = R.chave(nome);
+    const out = [];
+    for (const p of db.produtos) {
+      let score = 0;
+      if (ean && p.ean === ean) score = 1;
+      else {
+        for (const n of [p.nome, ...(p.apelidos || [])]) {
+          score = Math.max(score, normalizar(n) === normalizar(nome) ? 1 : R.similaridade(k, R.chave(n)));
+          if (score === 1) break;
+        }
+      }
+      if (score >= 0.45) out.push({ prod: p, score });
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, limite);
+  }
 
   function textoVariacao(v) {
     const sobe = v.diferenca > 0;
@@ -266,6 +300,15 @@
     if (ult) det += ` · Último ajuste manual: ${brl(ult.precoManual)} em ${data(ult.data)} (lucro real ${pct(ult.margemReal)})`;
     $('#cDetalhe').textContent = det;
     const prod = cNome.value.trim() && produtoPorNome(cNome.value);
+    let sugestao = '';
+    if (!prod && cNome.value.trim().length >= 4) {
+      const [m] = encontrarParecidos(cNome.value);
+      if (m && m.score >= 0.55) {
+        sugestao = `<div class="variacao igual">Parece ser <b>${esc(m.prod.nome)}</b> (${Math.round(m.score * 100)}% parecido)
+          <button type="button" class="btn-mini" id="cUsarSugestao" data-nome="${esc(m.prod.nome)}">Usar este</button></div>`;
+      }
+    }
+    $('#cSugestao').innerHTML = sugestao;
     $('#cVariacao').innerHTML = prod ? (htmlVariacao(compararCusto(prod, custo), prod, margem) ||
       (custo > 0 && Math.abs(custo - prod.custo) < 0.005 ? `<div class="variacao igual">Mesmo custo da última compra (${brl(prod.custo)} em ${data(prod.atualizado)})</div>` : '')) : '';
     if (modoManual) $('#cComparacao').innerHTML = htmlComparacao(custo, preco, num(cManual.value), margem);
@@ -275,8 +318,16 @@
   cMargem.addEventListener('input', recalcular);
   cManual.addEventListener('input', recalcular);
   cCat.addEventListener('change', () => { cMargem.value = fmtNum(margemDaCategoria(cCat.value), 0); recalcular(); });
+  cNome.addEventListener('input', recalcular);
+  // pointerdown: dispara antes do campo perder o foco (que redesenharia o botão)
+  $('#cSugestao').addEventListener('pointerdown', e => {
+    const b = e.target.closest('#cUsarSugestao'); if (!b) return;
+    e.preventDefault();
+    cNome.value = b.dataset.nome;
+    cNome.dispatchEvent(new Event('change'));
+  });
   cNome.addEventListener('change', () => {
-    const p = db.produtos.find(x => normalizar(x.nome) === normalizar(cNome.value));
+    const p = produtoPorNome(cNome.value);
     if (p) {
       cCusto.value = '';
       cCusto.placeholder = 'Último custo: ' + fmtNum(p.custo);
@@ -346,6 +397,8 @@
           <div class="meta">Custo ${brl(p.custo)} · ${esc(categoria(p.categoriaId).nome)} · ${pct(p.margem)}
             ${p.manual ? ` · calculado ${brl(calcularPreco(p.custo, p.margem))} · lucro real ${pct(margemReal(p.custo, p.precoFinal))}` : ''}
             · ${data(p.atualizado)}</div>
+          ${p.apelidos && p.apelidos.length ? `<div class="meta">Também aparece como: ${p.apelidos.map(esc).join(' · ')}</div>` : ''}
+          ${p.ean ? `<div class="meta">Código de barras: ${esc(p.ean)}</div>` : ''}
           ${p.custos && p.custos.length > 1 ? `<details class="custos"><summary>Histórico de custo (${p.custos.length} compras)</summary>
             ${p.custos.slice().reverse().map((c, i, arr) => {
               const ant = arr[i + 1];
@@ -566,7 +619,7 @@
     num, brl, pct, fmtNum, esc, normalizar, aviso,
     calcularPreco, margemDaCategoria, opcoesCategorias, categoria,
     salvarProduto, registrarAjuste, pedirPrecoManual, salvar,
-    compararCusto, produtoPorNome, textoVariacao
+    compararCusto, produtoPorNome, textoVariacao, encontrarParecidos, RECONHECER_AUTO
   };
 
   // ---------------------------------------------------------------- início

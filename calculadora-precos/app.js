@@ -3,6 +3,7 @@
   'use strict';
 
   const CHAVE = 'calculadora-precos-v1';
+  const VERSAO = '6 (arredondamento 0/5)';
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
@@ -745,6 +746,7 @@
   // ---------------------------------------------------------------- início
   if (db.produtos.some(p => p._recalcular)) { recalcularProdutos(); salvar(); }
   atualizarBotoesArred();
+  $('#versao').textContent = 'Versão do app: ' + VERSAO;
   cMargem.value = fmtNum(margemDaCategoria(db.categorias[0].id), 0);
   atualizarTopo();
   let abaInicial = 'calcular';
@@ -752,6 +754,10 @@
   abrirAba(abaInicial);
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then(reg => reg.update()).catch(() => {});
+    // quando chega versão nova, recarrega uma vez para usar
+    let recarregou = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!recarregou) { recarregou = true; location.reload(); } });
   }
 })();

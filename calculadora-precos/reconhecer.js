@@ -152,7 +152,7 @@
     nome = String(nome || '').trim().replace(/\s+/g, ' ');
     const letras = nome.replace(/[^A-Za-zÀ-ÿ]/g, '');
     if (!letras || letras !== letras.toUpperCase()) return nome; // já tem minúsculas: foi escrito à mão
-    const sa = semAcento(nome);
+    const sa = semAcento(nome).replace(/(\d)\s+(KGS?|GRS?|G|ML|LTS?|L)\b/g, '$1$2'); // "15 GR" → "15GR"
     const out = [];
     sa.split(' ').forEach((t, i) => {
       // medidas: 5KG → 5kg, 2000ML → 2L, 500GR → 500g

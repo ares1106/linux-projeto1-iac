@@ -11,6 +11,10 @@ colocando a % de lucro em cima do custo.
   Ao salvar, o ajuste fica registrado no **Histórico**.
 - **Histórico**: lista todos os ajustes manuais e um resumo por ramo com o lucro real médio praticado,
   com botão para adotar essa % no ramo. Exporta CSV (abre no Excel).
+- **Aumento de custo**: quando um produto já salvo é comprado de novo (digitado ou pela nota), o app avisa se o custo
+  subiu ou baixou, quanto em R$ e em %, o custo e a data da compra anterior e como fica o novo preço de venda.
+  Cada produto guarda o histórico de custos (aba Produtos), e a aba Histórico lista todas as variações
+  (filtro "só aumentos", exporta CSV). Na tabela da nota aparece a coluna "Última compra" e um resumo dos aumentos.
 - **Nota fiscal**: tire foto da nota (ou escolha imagem, PDF ou o XML da NF-e) e os itens aparecem numa tabela
   para conferir e salvar todos de uma vez. A coluna "Un/emb" divide o custo de caixas/fardos por unidade.
   - *XML da NF-e*: valores exatos (recomendado quando o fornecedor envia o XML por e-mail).

@@ -11,7 +11,8 @@
     config: { margemPadrao: 30, arredondar: 'nenhum', apiKey: '' },
     categorias: [{ id: 'geral', nome: 'Geral', margem: 30 }],
     produtos: [],
-    historico: []
+    historico: [],
+    variacoes: []
   });
 
   function carregar() {
@@ -23,10 +24,15 @@
       return {
         config: { ...p.config, ...(d.config || {}) },
         categorias: d.categorias && d.categorias.length ? d.categorias : p.categorias,
-        produtos: d.produtos || [],
-        historico: d.historico || []
+        produtos: (d.produtos || []).map(migrarProduto),
+        historico: d.historico || [],
+        variacoes: d.variacoes || []
       };
     } catch (e) { console.warn(e); return padrao(); }
+  }
+  function migrarProduto(p) {
+    if (!Array.isArray(p.custos)) p.custos = [{ data: p.atualizado || p.criado || new Date().toISOString(), custo: p.custo }];
+    return p;
   }
   let db = carregar();
   function salvar() {
@@ -110,7 +116,23 @@
     const calculado = calcularPreco(custo, margem);
     let p = db.produtos.find(x => normalizar(x.nome) === chave);
     const agora = new Date().toISOString();
-    if (!p) { p = { id: uid(), nome, criado: agora }; db.produtos.push(p); }
+    let variacao = null;
+    if (!p) {
+      p = { id: uid(), nome, criado: agora, custos: [{ data: agora, custo }] };
+      db.produtos.push(p);
+    } else {
+      migrarProduto(p);
+      variacao = compararCusto(p, custo);
+      if (variacao) {
+        variacao = {
+          ...variacao, id: uid(), data: agora, produtoId: p.id, nome,
+          precoVendaAnterior: p.precoFinal, precoVendaNovo: calculado
+        };
+        db.variacoes.unshift(variacao);
+        p.custos.push({ data: agora, custo });
+        p.ultimaVariacao = variacao;
+      }
+    }
     Object.assign(p, {
       nome, custo, categoriaId, margem,
       precoCalculado: calculado,
@@ -118,7 +140,39 @@
       manual: !!manual,
       atualizado: agora
     });
+    p.variacaoAgora = variacao; // apenas para avisar quem chamou (não precisa persistir)
     return p;
+  }
+
+  /** Compara um custo novo com o último custo salvo do produto. null = igual ou sem custo anterior */
+  function compararCusto(prod, custoNovo) {
+    if (!prod || !(prod.custo > 0) || !(custoNovo > 0)) return null;
+    const dif = custoNovo - prod.custo;
+    if (Math.abs(dif) < 0.005) return null;
+    const ult = (prod.custos && prod.custos[prod.custos.length - 1]) || {};
+    return {
+      custoAnterior: prod.custo,
+      custoNovo,
+      dataAnterior: ult.data || prod.atualizado,
+      diferenca: dif,
+      diferencaPct: dif / prod.custo * 100
+    };
+  }
+  const produtoPorNome = nome => db.produtos.find(x => normalizar(x.nome) === normalizar(nome));
+
+  function textoVariacao(v) {
+    const sobe = v.diferenca > 0;
+    return `${sobe ? '▲ Aumentou' : '▼ Baixou'} ${brl(Math.abs(v.diferenca))} (${sinal(v.diferencaPct)}${pct(Math.abs(v.diferencaPct))})`;
+  }
+  function htmlVariacao(v, prod, margem) {
+    if (!v) return '';
+    const sobe = v.diferenca > 0;
+    const novoPreco = calcularPreco(v.custoNovo, margem);
+    return `<div class="variacao ${sobe ? 'sobe' : 'desce'}">
+      <b>${textoVariacao(v)}</b> desde a última compra<br>
+      Custo: ${brl(v.custoAnterior)} em ${data(v.dataAnterior)} → <b>${brl(v.custoNovo)}</b><br>
+      Preço de venda: ${brl(prod.precoFinal)} → <b>${brl(novoPreco)}</b>${prod.manual ? ' (antes era ajuste manual)' : ''}
+    </div>`;
   }
 
   function registrarAjuste(prod, precoManual) {
@@ -179,7 +233,7 @@
     $$('.aba').forEach(b => b.classList.toggle('ativa', b.dataset.aba === nome));
     $$('.painel').forEach(p => p.classList.toggle('ativo', p.id === nome));
     if (nome === 'produtos') renderProdutos();
-    if (nome === 'historico') renderHistorico();
+    if (nome === 'historico') { renderHistorico(); renderVariacoes(); }
     if (nome === 'ajustes') renderAjustes();
     if (nome === 'calcular') renderCalcular();
     try { sessionStorage.setItem('aba', nome); } catch (e) { /* sem storage */ }
@@ -188,7 +242,7 @@
 
   function atualizarTopo() {
     $('#resumoTopo').textContent =
-      `${db.produtos.length} produtos · ${db.historico.length} ajustes manuais · lucro padrão ${pct(db.config.margemPadrao)}`;
+      `${db.produtos.length} produtos · ${db.historico.length} ajustes manuais · ${db.variacoes.filter(v => v.diferenca > 0).length} aumentos de custo · lucro ${pct(db.config.margemPadrao)}`;
   }
 
   // ---------------------------------------------------------------- CALCULAR
@@ -211,6 +265,9 @@
     const ult = cNome.value.trim() && ultimoAjuste(cNome.value);
     if (ult) det += ` · Último ajuste manual: ${brl(ult.precoManual)} em ${data(ult.data)} (lucro real ${pct(ult.margemReal)})`;
     $('#cDetalhe').textContent = det;
+    const prod = cNome.value.trim() && produtoPorNome(cNome.value);
+    $('#cVariacao').innerHTML = prod ? (htmlVariacao(compararCusto(prod, custo), prod, margem) ||
+      (custo > 0 && Math.abs(custo - prod.custo) < 0.005 ? `<div class="variacao igual">Mesmo custo da última compra (${brl(prod.custo)} em ${data(prod.atualizado)})</div>` : '')) : '';
     if (modoManual) $('#cComparacao').innerHTML = htmlComparacao(custo, preco, num(cManual.value), margem);
   }
 
@@ -221,7 +278,8 @@
   cNome.addEventListener('change', () => {
     const p = db.produtos.find(x => normalizar(x.nome) === normalizar(cNome.value));
     if (p) {
-      cCusto.value = fmtNum(p.custo);
+      cCusto.value = '';
+      cCusto.placeholder = 'Último custo: ' + fmtNum(p.custo);
       cCat.value = p.categoriaId;
       cMargem.value = fmtNum(p.margem, 0);
     }
@@ -252,18 +310,19 @@
     const manualV = num(cManual.value);
     const usarManual = modoManual && manualV > 0;
     const prod = salvarProduto({ nome: cNome.value, custo, categoriaId: cCat.value, margem });
+    const v = prod.variacaoAgora;
     if (usarManual) {
       const r = registrarAjuste(prod, Math.round(manualV * 100) / 100);
-      aviso(`Salvo com ajuste manual (${sinal(r.diferenca)}${brl(Math.abs(r.diferenca))})`);
+      aviso(`Salvo com ajuste manual (${sinal(r.diferenca)}${brl(Math.abs(r.diferenca))})` + (v ? ' · custo ' + textoVariacao(v).replace('Aumentou', 'aumentou').replace('Baixou', 'baixou') : ''));
     } else {
-      aviso('Produto salvo: ' + brl(prod.precoFinal));
+      aviso('Produto salvo: ' + brl(prod.precoFinal) + (v ? ' · custo ' + textoVariacao(v).replace('Aumentou', 'aumentou').replace('Baixou', 'baixou') : ''));
     }
     salvar();
     limparCalcular();
   });
 
   function limparCalcular() {
-    cNome.value = ''; cCusto.value = ''; cManual.value = '';
+    cNome.value = ''; cCusto.value = ''; cManual.value = ''; cCusto.placeholder = '0,00';
     cMargem.value = fmtNum(margemDaCategoria(cCat.value), 0);
     if (modoManual) $('#btnManual').click();
     renderCalcular();
@@ -282,10 +341,19 @@
     el.innerHTML = lista.map(p => `
       <div class="item" data-id="${p.id}">
         <div>
-          <div class="nome">${esc(p.nome)} ${p.manual ? '<span class="tag manual">manual</span>' : ''}</div>
+          <div class="nome">${esc(p.nome)} ${p.manual ? '<span class="tag manual">manual</span>' : ''}
+            ${p.ultimaVariacao ? `<span class="tag ${p.ultimaVariacao.diferenca > 0 ? 'sobe' : 'desce'}" title="Última mudança de custo">${p.ultimaVariacao.diferenca > 0 ? '▲' : '▼'} ${pct(Math.abs(p.ultimaVariacao.diferencaPct))}</span>` : ''}</div>
           <div class="meta">Custo ${brl(p.custo)} · ${esc(categoria(p.categoriaId).nome)} · ${pct(p.margem)}
             ${p.manual ? ` · calculado ${brl(calcularPreco(p.custo, p.margem))} · lucro real ${pct(margemReal(p.custo, p.precoFinal))}` : ''}
             · ${data(p.atualizado)}</div>
+          ${p.custos && p.custos.length > 1 ? `<details class="custos"><summary>Histórico de custo (${p.custos.length} compras)</summary>
+            ${p.custos.slice().reverse().map((c, i, arr) => {
+              const ant = arr[i + 1];
+              const d = ant ? (c.custo - ant.custo) / ant.custo * 100 : null;
+              return `<div>${data(c.data)} — <b>${brl(c.custo)}</b>${d != null ? ` <span class="${d > 0 ? 'neg' : 'pos'}">${sinal(d)}${pct(Math.abs(d))}</span>` : ''}</div>`;
+            }).join('')}
+            <div class="meta">Desde a 1ª compra: ${(() => { const a = p.custos[0].custo, z = p.custos[p.custos.length - 1].custo, d = (z - a) / a * 100; return `${sinal(d)}${pct(Math.abs(d))} (${brl(a)} → ${brl(z)})`; })()}</div>
+          </details>` : ''}
         </div>
         <div class="preco">${brl(p.precoFinal)}</div>
         <div class="acoes">
@@ -365,6 +433,38 @@
     }).join('');
   }
   $('#hBusca').addEventListener('input', renderHistorico);
+
+  function renderVariacoes() {
+    const q = normalizar($('#vBusca').value);
+    const filtro = $('#vFiltro').value;
+    const lista = db.variacoes.filter(v => (!q || normalizar(v.nome).includes(q)) &&
+      (filtro === 'todos' || (filtro === 'sobe' ? v.diferenca > 0 : v.diferenca < 0)));
+    const el = $('#vLista');
+    const sobe = db.variacoes.filter(v => v.diferenca > 0);
+    const desce = db.variacoes.filter(v => v.diferenca < 0);
+    const media = arr => arr.length ? arr.reduce((s, v) => s + v.diferencaPct, 0) / arr.length : 0;
+    $('#vResumo').innerHTML = db.variacoes.length ? `
+      <div class="resumo"><div class="nome">Aumentos</div><div class="grande neg">${sobe.length}</div><div class="meta">média ${pct(media(sobe))}</div></div>
+      <div class="resumo"><div class="nome">Reduções</div><div class="grande pos">${desce.length}</div><div class="meta">média ${pct(Math.abs(media(desce)))}</div></div>` : '';
+    if (!lista.length) { el.innerHTML = '<div class="vazio">Quando um produto já salvo for comprado de novo com outro custo, aparece aqui.</div>'; return; }
+    el.innerHTML = lista.map(v => `<div class="item">
+      <div>
+        <div class="nome">${esc(v.nome)}</div>
+        <div class="meta">${data(v.data)} · custo ${brl(v.custoAnterior)} (${data(v.dataAnterior)}) → <b>${brl(v.custoNovo)}</b></div>
+        <div class="meta">Venda: ${brl(v.precoVendaAnterior)} → ${brl(v.precoVendaNovo)}</div>
+      </div>
+      <div class="preco ${v.diferenca > 0 ? 'neg' : 'pos'}">${v.diferenca > 0 ? '▲' : '▼'} ${pct(Math.abs(v.diferencaPct))}<div class="meta">${sinal(v.diferenca)}${brl(Math.abs(v.diferenca))}</div></div>
+    </div>`).join('');
+  }
+  $('#vBusca').addEventListener('input', renderVariacoes);
+  $('#vFiltro').addEventListener('change', renderVariacoes);
+  $('#vExportar').addEventListener('click', () => {
+    const f = v => fmtNum(v);
+    const col = ['Data', 'Produto', 'Custo anterior', 'Data anterior', 'Custo novo', 'Diferença R$', 'Diferença %', 'Venda anterior', 'Venda nova'];
+    const linhas = db.variacoes.map(v => [data(v.data), v.nome, f(v.custoAnterior), data(v.dataAnterior), f(v.custoNovo), f(v.diferenca), f(v.diferencaPct), f(v.precoVendaAnterior), f(v.precoVendaNovo)]);
+    const csv = [col, ...linhas].map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    baixar('variacao-custos.csv', '\ufeff' + csv, 'text/csv;charset=utf-8');
+  });
   $('#hResumo').addEventListener('click', e => {
     const b = e.target.closest('[data-usar]'); if (!b) return;
     const c = db.categorias.find(x => x.id === b.dataset.usar);
@@ -465,7 +565,8 @@
     get db() { return db; },
     num, brl, pct, fmtNum, esc, normalizar, aviso,
     calcularPreco, margemDaCategoria, opcoesCategorias, categoria,
-    salvarProduto, registrarAjuste, pedirPrecoManual, salvar
+    salvarProduto, registrarAjuste, pedirPrecoManual, salvar,
+    compararCusto, produtoPorNome, textoVariacao
   };
 
   // ---------------------------------------------------------------- início

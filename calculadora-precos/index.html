@@ -58,6 +58,8 @@
         <div class="detalhe" id="cDetalhe">Lucro por unidade: R$ 0,00</div>
       </div>
 
+      <div id="cVariacao"></div>
+
       <div id="cManualBox" class="manual-box oculto">
         <label>Preço manual (R$)
           <input id="cManual" type="text" inputmode="decimal" placeholder="0,00">
@@ -107,11 +109,12 @@
           <button id="nAplicarCat" class="btn-mini">Aplicar a todos</button>
         </div>
       </div>
+      <div id="nResumoVar" class="resumo-var"></div>
       <p class="ajuda">Confira descrição e custo. "Un/emb" divide o custo quando o item vem em caixa/fardo (ex.: CX com 12 → custo por unidade).</p>
       <div class="tabela-rolagem">
         <table class="tabela" id="nTabela">
           <thead><tr>
-            <th></th><th>Produto</th><th>Custo emb.</th><th>Un/emb</th><th>Custo un.</th><th>Ramo</th><th>%</th><th>Venda</th><th></th>
+            <th></th><th>Produto</th><th>Custo emb.</th><th>Un/emb</th><th>Custo un.</th><th>Ramo</th><th>%</th><th>Venda</th><th>Última compra</th><th></th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -140,6 +143,23 @@
 
   <!-- ===================== HISTÓRICO ===================== -->
   <section id="historico" class="painel">
+    <div class="cartao">
+      <div class="cab-tabela">
+        <h2>Aumentos de custo (compras)</h2>
+        <div>
+          <select id="vFiltro" class="filtro">
+            <option value="todos">Todos</option>
+            <option value="sobe">Só aumentos</option>
+            <option value="desce">Só reduções</option>
+          </select>
+          <input id="vBusca" type="search" placeholder="Buscar…">
+          <button id="vExportar" class="btn-mini">Exportar CSV</button>
+        </div>
+      </div>
+      <p class="ajuda">Toda vez que um produto já salvo é comprado de novo com outro custo, fica registrado aqui.</p>
+      <div id="vResumo" class="resumo-grid" style="margin-bottom:10px"></div>
+      <div id="vLista" class="lista"></div>
+    </div>
     <div class="cartao">
       <h2>Comparação por ramo</h2>
       <p class="ajuda">Média dos ajustes manuais: mostra quanto, na prática, ela está colocando de lucro em cada ramo.</p>

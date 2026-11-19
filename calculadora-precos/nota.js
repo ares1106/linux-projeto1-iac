@@ -207,8 +207,37 @@ function montarItens(lidos) {
 
 const custoUn = it => (it.unPorEmb > 0 ? it.custoEmb / it.unPorEmb : it.custoEmb);
 
+function celulaVariacao(it) {
+  const prod = App.produtoPorNome(it.nome);
+  if (!prod) return '<td class="var novo">produto novo</td>';
+  const v = App.compararCusto(prod, custoUn(it));
+  if (!v) return `<td class="var igual">= mesmo custo<br>${brl(prod.custo)}</td>`;
+  const sobe = v.diferenca > 0;
+  return `<td class="var ${sobe ? 'sobe' : 'desce'}" title="Antes: ${brl(v.custoAnterior)}">${sobe ? '▲' : '▼'} ${App.pct(Math.abs(v.diferencaPct))} (${sobe ? '+' : '−'}${brl(Math.abs(v.diferenca))})<br>antes ${brl(v.custoAnterior)}</td>`;
+}
+
+function resumoVariacoes() {
+  let sobe = 0, desce = 0, novos = 0, maior = null;
+  itens.forEach(it => {
+    if (!it.marcado) return;
+    const prod = App.produtoPorNome(it.nome);
+    if (!prod) { novos++; return; }
+    const v = App.compararCusto(prod, custoUn(it));
+    if (!v) return;
+    if (v.diferenca > 0) { sobe++; if (!maior || v.diferencaPct > maior.pct) maior = { nome: it.nome, pct: v.diferencaPct }; }
+    else desce++;
+  });
+  const el = $('#nResumoVar');
+  if (!sobe && !desce) { el.innerHTML = novos ? `<div class="variacao igual">${novos} produto(s) novo(s), nenhum aumento em relação às compras anteriores.</div>` : ''; return; }
+  el.innerHTML = `<div class="variacao ${sobe ? 'sobe' : 'desce'}">
+    ${sobe ? `<b>▲ ${sobe} produto(s) com aumento de custo</b>${maior ? ` — maior: ${esc(maior.nome)} (+${App.pct(maior.pct)})` : ''}<br>` : ''}
+    ${desce ? `▼ ${desce} produto(s) ficaram mais baratos<br>` : ''}
+    ${novos ? `${novos} produto(s) novo(s)` : ''}</div>`;
+}
+
 function renderTabela() {
   $('#nResultado').classList.remove('oculto');
+  resumoVariacoes();
   $('#nCategoriaTodos').innerHTML = App.opcoesCategorias($('#nCategoriaTodos').value || categoriaPadrao());
   $('#nTabela tbody').innerHTML = itens.map((it, i) => {
     const calc = App.calcularPreco(custoUn(it), it.margem);
@@ -222,6 +251,7 @@ function renderTabela() {
       <td><select data-c="categoriaId">${App.opcoesCategorias(it.categoriaId)}</select></td>
       <td><input type="text" class="peq" data-c="margem" inputmode="decimal" value="${fmtNum(it.margem, 0)}"></td>
       <td class="venda ${it.precoManual != null ? 'manual' : ''}" title="${it.precoManual != null ? 'Preço manual (calculado ' + brl(calc) + ')' : ''}">${brl(venda)}</td>
+      ${celulaVariacao(it)}
       <td><button class="btn-mini" data-acao="manual">Ajustar</button> <button class="btn-mini" data-acao="remover" title="Remover linha">✕</button></td>
     </tr>`;
   }).join('');
@@ -263,14 +293,15 @@ $('#nAdicionarLinha').addEventListener('click', () => {
 $('#nSalvarTodos').addEventListener('click', () => {
   const sel = itens.filter(it => it.marcado && custoUn(it) > 0);
   if (!sel.length) { App.aviso('Nenhum item marcado com custo válido'); return; }
-  let ajustes = 0;
+  let ajustes = 0, aumentos = 0;
   sel.forEach(it => {
     const prod = App.salvarProduto({ nome: it.nome, custo: Math.round(custoUn(it) * 10000) / 10000, categoriaId: it.categoriaId, margem: it.margem });
+    if (prod.variacaoAgora && prod.variacaoAgora.diferenca > 0) aumentos++;
     if (it.precoManual != null) { App.registrarAjuste(prod, it.precoManual); ajustes++; }
   });
   App.salvar();
   itens = itens.filter(it => !sel.includes(it));
   renderTabela();
   if (!itens.length) $('#nResultado').classList.add('oculto');
-  App.aviso(`${sel.length} produto(s) salvos${ajustes ? `, ${ajustes} com ajuste manual` : ''}`);
+  App.aviso(`${sel.length} produto(s) salvos${ajustes ? `, ${ajustes} com ajuste manual` : ''}${aumentos ? ` · ${aumentos} aumento(s) de custo no Histórico` : ''}`);
 });

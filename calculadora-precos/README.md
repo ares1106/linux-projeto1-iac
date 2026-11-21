@@ -24,6 +24,10 @@ colocando a % de lucro em cima do custo.
   marca e palavras do nome (entende abreviações e erros de leitura; marca diferente = outro produto).
   Na nota, a coluna "Produto salvo" já vem escolhida quando a semelhança é alta (≥ 80%); abaixo disso ela
   escolhe na lista ou deixa como produto novo. O nome da nota vira apelido do produto e na próxima compra é reconhecido direto.
+- **Desconto por item (Atacadão)**: quando abaixo do produto vem "desconto sobre item", o custo vira
+  (valor total − desconto) ÷ quantidade (ex.: Toddy (53,94 − 5,40) ÷ 6 = 8,09). Caixas como "12X1L" ainda são
+  divididas por 12 na coluna Un/emb. Na leitura pelo Claude, o app confere a soma dos itens com o "Valor a Pagar"
+  da nota e avisa se não bater.
 - **Lista para WhatsApp**: depois de salvar a nota aparece o botão "Montar lista para WhatsApp"
   (também na aba Produtos). Gera "• Nome do produto — *R$ 0,00*", separado por ramo, com título;
   filtros: última nota, atualizados hoje, últimos 7 dias ou todos. O texto pode ser editado antes de enviar.

@@ -1,5 +1,5 @@
 /* Leitura de nota fiscal: XML da NF-e, foto (OCR no aparelho) ou Claude (foto/PDF) */
-import { parseTextoNota, parseXmlNfe } from './parser.js';
+import { parseTextoNota, parseXmlNfe, itensDoClaude } from './parser.js';
 
 const App = window.App;
 const $ = s => document.querySelector(s);
@@ -42,6 +42,7 @@ async function processarArquivo(arquivo, input) {
     if (ehXml) {
       status('Lendo XML da nota…');
       lidos = parseXmlNfe(await arquivo.text());
+      lidos.conferencia = conferir(lidos, 0);
       $('#nTexto').textContent = '(arquivo XML — valores exatos da nota)';
     } else if (metodo === 'claude' || ehPdf) {
       if (!App.db.config.apiKey) {
@@ -52,11 +53,18 @@ async function processarArquivo(arquivo, input) {
       lidos = await lerComClaude(arquivo, ehPdf);
     } else {
       lidos = await lerComOcr(arquivo);
+      lidos.conferencia = conferir(lidos, 0);
     }
     if (!lidos.length) {
       status('Não encontrei itens com preço. Tente uma foto mais reta e nítida, ou adicione as linhas manualmente.', true);
     } else {
-      status(`${lidos.length} item(ns) encontrados. Confira os valores antes de salvar.`);
+      const c = lidos.conferencia || {};
+      let msg = `${lidos.length} item(ns) encontrados.`;
+      if (c.descontos > 0) msg += ` Descontos de ${brl(c.descontos)} já tirados do custo.`;
+      if (c.ok === true) msg += ` ✓ Confere com o valor da nota (${brl(c.aPagar)}).`;
+      if (c.ok === false) msg += ` ⚠ A soma dos itens (${brl(c.soma)}) não bate com o valor a pagar (${brl(c.aPagar)}) — confira linha por linha.`;
+      else msg += ' Confira os valores antes de salvar.';
+      status(msg, c.ok === false);
     }
     montarItens(lidos);
   } catch (err) {
@@ -109,16 +117,20 @@ const ESQUEMA_ITENS = {
           quantidade: { type: 'number' },
           unidade: { type: 'string', description: 'UN, CX, FD, KG, PCT...' },
           valor_unitario: { type: 'number', description: 'Valor unitário em reais, como na nota' },
-          valor_total: { type: 'number', description: 'Valor total do item em reais' },
+          valor_total: { type: 'number', description: 'Valor total do item em reais, ANTES do desconto, como impresso na coluna de total' },
+          desconto: { type: 'number', description: 'Desconto deste item em reais (linha "desconto sobre item" logo abaixo dele). 0 se não houver.' },
           codigo_barras: { type: 'string', description: 'Código de barras (EAN/GTIN) do item se estiver impresso na nota; vazio se não houver' },
           unidades_por_embalagem: { type: 'number', description: 'Quantas unidades vêm dentro de cada caixa/fardo/pacote, se a descrição indicar (ex.: CX12, 12X1L, FD 6UN). 1 se não houver.' }
         },
-        required: ['descricao', 'quantidade', 'unidade', 'valor_unitario', 'valor_total', 'codigo_barras', 'unidades_por_embalagem'],
+        required: ['descricao', 'quantidade', 'unidade', 'valor_unitario', 'valor_total', 'desconto', 'codigo_barras', 'unidades_por_embalagem'],
         additionalProperties: false
       }
-    }
+    },
+    soma_valor_total: { type: 'number', description: 'Valor total dos produtos impresso na nota (antes dos descontos), 0 se não houver' },
+    desconto_total: { type: 'number', description: 'Desconto total impresso na nota, 0 se não houver' },
+    valor_a_pagar: { type: 'number', description: 'Valor a pagar / valor da nota impresso no fim, 0 se não houver' }
   },
-  required: ['itens'],
+  required: ['itens', 'soma_valor_total', 'desconto_total', 'valor_a_pagar'],
   additionalProperties: false
 };
 
@@ -156,7 +168,14 @@ async function lerComClaude(arquivo, ehPdf) {
             text: 'Esta é uma nota fiscal de compra de mercadorias (NF-e/DANFE, NFC-e ou cupom) de um mercado. ' +
               'Liste TODOS os itens/produtos da nota, na ordem em que aparecem, com quantidade, unidade, valor unitário e valor total. ' +
               'Use os números exatamente como impressos (em reais, ponto como separador decimal no JSON). ' +
-              'Não inclua linhas de totais, impostos, frete, descontos gerais ou formas de pagamento. ' +
+              'Não inclua linhas de totais, impostos, frete ou formas de pagamento como itens. ' +
+              'DESCONTOS POR ITEM: em cupons como os do Atacadão, abaixo de cada produto pode vir uma linha "desconto sobre item" com um valor; ' +
+              'esse valor é o desconto do produto de CIMA e vai no campo "desconto" dele (não é um item). ' +
+              'Em foto inclinada o número do desconto pode parecer meia linha deslocado; associe pela ordem. Item sem essa linha tem desconto 0. ' +
+              'QUANTIDADE: use a coluna Qtde (ex.: "1X370G 6 UND9" → quantidade 6, unidade UND; "12X1L 1 CXA2" → quantidade 1, unidade CXA). ' +
+              'O "NX" antes do tamanho é quantas unidades vêm na embalagem → unidades_por_embalagem (1X370G → 1; 12X1L → 12; 6X500ML → 6). ' +
+              'CONFERÊNCIA: a soma de valor_total dos itens deve bater com o valor total da nota, e a soma dos descontos com o desconto total; ' +
+              'se não bater, releia antes de responder. Preencha soma_valor_total, desconto_total e valor_a_pagar com o que está impresso no fim. ' +
               'Se um valor estiver ilegível, estime pelo total ÷ quantidade.'
           }
         ]
@@ -176,16 +195,19 @@ async function lerComClaude(arquivo, ehPdf) {
   const texto = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');
   const dados = JSON.parse(texto);
   $('#nTexto').textContent = dados.itens.map(i =>
-    `${i.descricao} | ${i.quantidade} ${i.unidade} x ${i.valor_unitario} = ${i.valor_total}`).join('\n');
-  return dados.itens.map(i => ({
-    descricao: i.descricao,
-    quantidade: i.quantidade,
-    unidade: i.unidade,
-    valorUnitario: i.valor_unitario || (i.quantidade ? i.valor_total / i.quantidade : 0),
-    unPorEmb: i.unidades_por_embalagem > 0 ? i.unidades_por_embalagem : 1,
-    ean: /^\d{8,14}$/.test(i.codigo_barras || '') && window.Reconhecer.gtinValido(i.codigo_barras) ? i.codigo_barras : '',
-    confiavel: true
-  }));
+    `${i.descricao} | ${i.quantidade} ${i.unidade} x ${i.valor_unitario} = ${i.valor_total}${i.desconto ? ` − desc. ${i.desconto}` : ''}`).join('\n') +
+    `\n\nTotal da nota: ${dados.soma_valor_total} · Desconto: ${dados.desconto_total} · A pagar: ${dados.valor_a_pagar}`;
+  const itens = itensDoClaude(dados);
+  itens.conferencia = conferir(itens, dados.valor_a_pagar || (dados.soma_valor_total - dados.desconto_total));
+  return itens;
+}
+
+/** Soma (total − desconto) dos itens e compara com o valor a pagar da nota */
+function conferir(itens, aPagar) {
+  const soma = itens.reduce((s, i) => s + (i.total || 0) - (i.desconto || 0), 0);
+  const descontos = itens.reduce((s, i) => s + (i.desconto || 0), 0);
+  if (!(aPagar > 0)) return { ok: null, soma, descontos };
+  return { ok: Math.abs(soma - aPagar) <= 0.05, soma, descontos, aPagar };
 }
 
 // ------------------------------------------------------------------ tabela de conferência
@@ -202,7 +224,10 @@ function montarItens(lidos) {
     return {
       ...it,
       marcado: l.confiavel !== false,
-      custoEmb: Math.round(l.valorUnitario * 100) / 100,
+      custoEmb: Math.round(l.valorUnitario * 10000) / 10000,
+      desconto: l.desconto || 0,
+      total: l.total || 0,
+      quantidade: l.quantidade || 1,
       unPorEmb: l.unPorEmb || 1,
       unidade: (l.unidade || '').toUpperCase(),
       categoriaId,
@@ -272,7 +297,8 @@ function renderTabela() {
       <td><input type="text" data-c="nome" value="${esc(it.nome)}"></td>
       <td><input type="text" class="num" data-c="custoEmb" inputmode="decimal" value="${fmtNum(it.custoEmb)}"></td>
       <td><input type="text" class="peq" data-c="unPorEmb" inputmode="numeric" value="${it.unPorEmb}"></td>
-      <td class="custo-un">${brl(custoUn(it))}</td>
+      <td class="custo-un">${brl(custoUn(it))}${it.desconto > 0
+        ? `<div class="meta-desc" title="(${brl(it.total)} − ${brl(it.desconto)}) ÷ ${App.fmtNum(it.quantidade, 0)}">desc. ${brl(it.desconto)} já tirado</div>` : ''}</td>
       <td><select data-c="categoriaId">${App.opcoesCategorias(it.categoriaId)}</select></td>
       <td><input type="text" class="peq" data-c="margem" inputmode="decimal" value="${fmtNum(it.margem, 0)}"></td>
       <td class="venda ${it.precoManual != null ? 'manual' : ''}" title="${it.precoManual != null ? 'Preço manual (calculado ' + brl(calc) + ')' : ''}">${brl(venda)}</td>
@@ -292,7 +318,7 @@ $('#nTabela').addEventListener('change', e => {
     const p = vinculado(it);
     if (p) { it.categoriaId = p.categoriaId; it.margem = p.margem; it.precoManual = null; }
   }
-  else if (c === 'custoEmb') { const v = num(e.target.value); if (v >= 0) it.custoEmb = v; it.precoManual = null; }
+  else if (c === 'custoEmb') { const v = num(e.target.value); if (v >= 0) { it.custoEmb = v; it.desconto = 0; } it.precoManual = null; }
   else if (c === 'unPorEmb') { const v = num(e.target.value); if (v > 0) it.unPorEmb = v; it.precoManual = null; }
   else if (c === 'margem') { const v = num(e.target.value); if (isFinite(v)) it.margem = v; it.precoManual = null; }
   else if (c === 'categoriaId') { it.categoriaId = e.target.value; it.margem = App.margemDaCategoria(it.categoriaId); it.precoManual = null; }

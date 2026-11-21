@@ -14,6 +14,9 @@
     PAP: 'PAPEL', HIG: 'HIGIENICO', CR: 'CREME', DENT: 'DENTAL', MAC: 'MACARRAO', MACAR: 'MACARRAO',
     ESPAG: 'ESPAGUETE', OL: 'OLEO', AZ: 'AZEITE', EXT: 'EXTRA', VIRG: 'VIRGEM',
     INT: 'INTEGRAL', DESN: 'DESNATADO', SEMIDESN: 'SEMIDESNATADO', TRAD: 'TRADICIONAL',
+    LIMP: 'LIMPADOR', LIQ: 'LIQUIDO', PICANT: 'PICANTE', ABS: 'ABSORVENTE', NOR: 'NORMAL',
+    MIST: 'MISTURA', LACT: 'LACTEA', SANIT: 'SANITARIA', COQ: 'COQUETEL', CQQ: 'COQUETEL', ALC: 'ALCOOLICO',
+    CACHAC: 'CACHACA', TROP: 'TROPICAL', MULTIUS: 'MULTIUSO', PERF: 'PERFUMADO', TRIANGUL: 'TRIANGULO',
     CHOC: 'CHOCOLATE', ACHOC: 'ACHOCOLATADO', IOG: 'IOGURTE', REQ: 'REQUEIJAO', MUSS: 'MUSSARELA',
     PRES: 'PRESUNTO', SALS: 'SALSICHA', LING: 'LINGUICA', FRG: 'FRANGO', FGO: 'FRANGO',
     CONG: 'CONGELADO', RESF: 'RESFRIADO', TEMP: 'TEMPERO', MOL: 'MOLHO', TOM: 'TOMATE',
@@ -137,24 +140,33 @@
     MACARRAO: 'Macarrão', PAO: 'Pão', LIMAO: 'Limão', MAMAO: 'Mamão', REQUEIJAO: 'Requeijão', PILAO: 'Pilão',
     HIGIENICO: 'Higiênico', AGUA: 'Água', CHA: 'Chá', LINGUICA: 'Linguiça', FECULA: 'Fécula', ALCOOL: 'Álcool',
     PESSEGO: 'Pêssego', MACA: 'Maçã', ACAI: 'Açaí', MELAO: 'Melão', CAMARAO: 'Camarão', SALMAO: 'Salmão',
-    PURE: 'Purê', PE: 'Pé', LAMPADA: 'Lâmpada', ESPONJA: 'Esponja', SABAOEMPO: 'Sabão em pó', PO: 'Pó',
+    PURE: 'Purê', PE: 'Pé', LAMPADA: 'Lâmpada', ESPONJA: 'Esponja', SABAOEMPO: 'Sabão em pó',
     GRAOS: 'Grãos', GRAO: 'Grão', FILE: 'Filé', CONTRAFILE: 'Contrafilé', COXAO: 'Coxão', LAGARTO: 'Lagarto',
     MUCARELA: 'Muçarela', MUSSARELA: 'Muçarela', PRATO: 'Prato', TEMPERO: 'Tempero', ENERGETICO: 'Energético',
     NECTAR: 'Néctar', GELEIA: 'Geleia', ACHOCOLATADO: 'Achocolatado', SAO: 'São', SALGADINHO: 'Salgadinho',
     AMENDOIM: 'Amendoim', PAPEL: 'Papel', TOALHA: 'Toalha', MAIONESE: 'Maionese', VINAGRE: 'Vinagre',
     ORGANICO: 'Orgânico', ACUCARADO: 'Açucarado', FRANCES: 'Francês', LEITE: 'Leite', CONDENSADO: 'Condensado',
-    TRADICIONAL: 'Tradicional', LIQUIDO: 'Líquido', CONCENTRADO: 'Concentrado', GRATIS: 'Grátis', LIMPEZA: 'Limpeza', UNIAO: 'União', YPE: 'Ypê', MOCA: 'Moça', PAES: 'Pães', LIMOES: 'Limões', FEIJOES: 'Feijões', COCO: 'Coco'
+    TRADICIONAL: 'Tradicional', LIQUIDO: 'Líquido', CONCENTRADO: 'Concentrado', GRATIS: 'Grátis', LIMPEZA: 'Limpeza', ALCOOLICO: 'Alcoólico', CACHACA: 'Cachaça', SANITARIA: 'Sanitária', LACTEA: 'Láctea',
+    TRIANGULO: 'Triângulo', VEJA: 'Veja', PO: 'em Pó', UNIAO: 'União', YPE: 'Ypê', MOCA: 'Moça', PAES: 'Pães', LIMOES: 'Limões', FEIJOES: 'Feijões', COCO: 'Coco'
   };
   const MINUSC = new Set(['DE', 'DA', 'DO', 'DAS', 'DOS', 'E', 'COM', 'SEM', 'EM', 'PARA']);
 
   /** "ARROZ TIO JOAO T1 5KG" → "Arroz Tio João Tipo 1 5kg". Nomes já digitados normalmente não mudam. */
   function nomeAmigavel(nome) {
     nome = String(nome || '').trim().replace(/\s+/g, ' ');
-    const letras = nome.replace(/[^A-Za-zÀ-ÿ]/g, '');
+    // ignora medidas como "5Kg" / "1X5Kg" ao decidir se o nome veio todo em maiúsculas (da nota)
+    const letras = nome.replace(/\d+(?:[.,]\d+)?\s*(?:x\s*\d+(?:[.,]\d+)?\s*)?(?:kgs?|grs?|g|mls?|lts?|l|und?|unid)\b/gi, '').replace(/[^A-Za-zÀ-ÿ]/g, '');
     if (!letras || letras !== letras.toUpperCase()) return nome; // já tem minúsculas: foi escrito à mão
-    const sa = semAcento(nome).replace(/(\d)\s+(KGS?|GRS?|G|ML|LTS?|L)\b/g, '$1$2'); // "15 GR" → "15GR"
+    const sa = semAcento(nome)
+      .replace(/([A-Z])\.(?=[A-Z])/g, '$1 ')          // "ACHOC.PO" → "ACHOC PO"
+      .replace(/\b1\s*X\s*(?=\d)/g, '')               // "1X370G" → "370G" (embalagem com 1)
+      .replace(/\bM\s*\.?\s*USO\b/g, 'MULTIUSO')
+      .replace(/(\d)\s+(KGS?|GRS?|G|ML|LTS?|L)\b/g, '$1$2'); // "15 GR" → "15GR"
     const out = [];
-    sa.split(' ').forEach((t, i) => {
+    sa.replace(/\bC\/A\b/g, 'COM ABAS').split(' ').forEach((t, i) => {
+      if (/^[A-Z]{2,}\.$/.test(t)) t = t.slice(0, -1); // "NOR." → "NOR"
+      const un = t.match(/^(\d+)(UND|UNID|UN)$/);
+      if (un) { out.push(un[1] + ' un'); return; }
       // medidas: 5KG → 5kg, 2000ML → 2L, 500GR → 500g
       const m = t.match(/^(\d+(?:[.,]\d+)?)(KG|KGS|K|GRS|GR|G|LTS|LT|L|ML)$/);
       if (m) {

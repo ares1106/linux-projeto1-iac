@@ -1,4 +1,4 @@
-const CACHE = 'precos-v6';
+const CACHE = 'precos-v7';
 const FILES = ['./', './index.html', './style.css', './app.js', './nota.js', './parser.js', './reconhecer.js', './manifest.json', './icon.svg'];
 self.addEventListener('install', e => {
   self.skipWaiting();

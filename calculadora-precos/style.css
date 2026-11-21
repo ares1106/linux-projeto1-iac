@@ -209,3 +209,5 @@ label.check { display: flex; gap: 8px; align-items: center; color: var(--texto);
 .btn-arred { margin-top: 8px; }
 .btn-arred.ligado { background: var(--verde); color: #fff; border-color: var(--verde); }
 @media (prefers-color-scheme: dark) { .btn-arred.ligado { color: #0c1a12; } }
+
+.tabela .meta-desc { font-size: .75rem; color: var(--verde); white-space: nowrap; }

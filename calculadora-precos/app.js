@@ -3,7 +3,7 @@
   'use strict';
 
   const CHAVE = 'calculadora-precos-v1';
-  const VERSAO = '6 (arredondamento 0/5)';
+  const VERSAO = '7 (desconto por item — Atacadão)';
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
